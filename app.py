@@ -16,7 +16,8 @@
 #     app.run(debug=True)
 
 import os
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for
+# from flask import jsonify
 import fitz
 from docx import Document
 import google.generativeai as genai
@@ -283,7 +284,7 @@ def submit():
     phone = request.form['phone']
     address = request.form['address']
     linkedin = request.form['linkedin']
-    summary = request.form['summary']
+    # summary = request.form['summary']
 
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin)
     db.session.add(personal_info)
@@ -406,7 +407,7 @@ def submit():
                                                     date_of_issue=datetime.strptime(certdate[i], '%m-%d-%Y') if certdate[i] else None, issuing_organization=certorg[i])
         db.session.add(certification_detail)
 
-    skills = request.form['skills']
+    # skills = request.form['skills']
 
     skills = request.form['skills'].split(',')
     for skill in skills:
