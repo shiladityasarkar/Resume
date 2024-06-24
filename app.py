@@ -200,7 +200,7 @@ def resume_form():
 
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-import dspy, json
+import dspy
 
 gem = dspy.Google("models/gemini-1.0-pro", api_key='AIzaSyBileOLS4Ys9Nk1X27OqBccsEmgxOWmV54')
 dspy.settings.configure(lm=gem)
