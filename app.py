@@ -21,7 +21,6 @@ from flask import Flask, render_template, request, redirect, url_for
 import fitz
 from docx import Document
 import google.generativeai as genai
-import json
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -201,6 +200,23 @@ def resume_form():
 
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+import dspy, json
+
+gem = dspy.Google("models/gemini-1.0-pro", api_key='AIzaSyBileOLS4Ys9Nk1X27OqBccsEmgxOWmV54')
+dspy.settings.configure(lm=gem)
+
+class Summary(dspy.Signature):
+  """
+  You are an expert in summarizing text resumes of candidates applying for a
+  job position. The resume is given in the format of json and your task is to
+  write the summary of this candidate from this resume. Be careful to include all
+  relevant skills mentioned in the resume.
+  """
+  resume_json = dspy.InputField(desc='This is the resume in JSON format.')
+  summary = dspy.OutputField(desc='The summary of the resume.')
+
+summ = dspy.Predict(Summary)
+
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://shila:resume@localhost/resume'
 app.app_context().push()
@@ -213,6 +229,7 @@ class PersonalInformation(db.Model):
     phone_number = db.Column(db.String(20))
     address = db.Column(db.Text)
     linkedin_url = db.Column(db.String(255))
+    gen_sum = db.Column(db.String(4096))
 
 class Summary(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -274,6 +291,7 @@ class LanguageCompetencies(db.Model):
     language = db.Column(db.String(255))
     proficiency_level = db.Column(db.String(255))
 
+# db.drop_all() if any changes made to the above database classes.
 db.create_all()
 
 @app.route('/submit', methods=['POST'])
@@ -284,9 +302,10 @@ def submit():
     phone = request.form['phone']
     address = request.form['address']
     linkedin = request.form['linkedin']
-    # summary = request.form['summary']
+    gen_sum = summ(resume_json = open('resume.json','r').read()).summary
 
-    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin)
+
+    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin, gen_sum=gen_sum)
     db.session.add(personal_info)
     db.session.commit()  # commits here to generate the id
 
