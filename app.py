@@ -1,14 +1,25 @@
 import os
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for
-# from flask import jsonify
 import fitz
 from docx import Document
 import google.generativeai as genai
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.sql import text
+from datetime import datetime
+import dspy
+import json
 
+load_dotenv()
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['GENERATED_JSON'] = 'resume.json'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Configuring the database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://shila:resume@localhost/resume'
+app.app_context().push()
+db = SQLAlchemy(app)
 
 def read_document(file_path):
     if file_path.endswith('.pdf'):
@@ -34,28 +45,33 @@ def read_document(file_path):
     else:
         print("Unsupported file format")
         return None
-    
+
+
 @app.route('/')
 def homepage():
     return render_template('home.html')
 
-@app.route('/navigate', methods=['POST'])
-def navigate():
-    print('hello world')
-    candy = request.form['candy']
-    fac = request.form['fac']
-    print(candy, fac)
-    return "hehe"
+
+@app.route('/candidate_button', methods=['POST', 'GET'])
+def candidate_button():
+    return render_template('upload.html')
+
+
+@app.route('/hod_button', methods=['POST', 'GET'])
+def hod_button():
+    return render_template('hod_form.html')
+
 
 @app.route('/filterr', methods=['POST'])
 def filterr():
     category = request.form['category']
     eligib_test = request.form['eligib_test']
-    cursor = db.connection.cursor()
-    res = cursor.execute('''SELECT personal_information_id from Filter WHERE cat like %s AND eli like %s''', (category, eligib_test))
-    cursor.close()
-    print(res)
-    return "hehe"
+
+    session = db.session()
+    res = session.execute(text(f'''SELECT personal_information_id from Filter''')).cursor
+    session.close()
+    return render_template('home.html')
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -68,125 +84,143 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
         document_text = read_document(file_path)
-        genai.configure(api_key='AIzaSyAy3EjjG0puD1quoYtmxkXPRQuz4RvtsPY')
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"""
-        You are a professional resume parsing agent.
-        So do as follows:
-        1. Extract Personal Information of the applicant with keys being:
-        a. Extract name of the applicant.
-        b. Extract email of the applicant.
-        c. Extract phone number of the applicant.
-        d. Exract address of the applicant.
-        e. Extract linkedin url of the applicant.
-        2. Extract me the Summary of the applicant if mentioned.
-        3. Extract me Work Experience details with keys being:
-        a. Company name
-        b. Mode of work (Offline/Online/Hybrid)
-        c. Job Role
-        d. Job Type (Full Time or Intern)
-        e. Start Date
-        f. End Date.
-        4. Extract me Project details with keys being:
-        a. Name of Project with short introduction of it, if mentioned
-        b. Description of project.
-        c. Start Date if any.
-        d. End Date if any
-        5. Extract me Achievement details with keys being:
-        a. Heading with short introduction of it, if mentioned
-        b. Description of the heading.
-        c. Start Date if any.
-        d. End Date if any:
-        6. Extract me Education details with keys being:
-        a. Degree/Course
-        b. Field of Study (note: usually written alongside degree, extract from 'degree' key if that is the case)
-        c. Institute
-        d. Marks/Percentage/GPA
-        e. Start Date if any
-        f. End Date/ Passing Year
-        7. Extract me Certification details with keys being:
-        a. Certification Title
-        b. Issuing Organization
-        c. Date Of Issue
-        8. List me all the skills from the following document.
-        9. List me all the extracurricular activities/hobbies from the following document.
-        10. List me all the language competencies from the following document.
-        Resume of applicant: {document_text}
-        You are to generate a valid JSON script as output. Properly deal with trailing commas while formatting the output file.
-        Take this empty json format and fill it up:
-        {{
-            "Personal_Information": {{
-                "Name": "",
-                "Email": "",
-                "Phone_Number": "",
-                "Address": "",
-                "LinkedIn_URL": ""
-            }},
-            "Summary": "",
-            "Work_Experience": [
-                {{
-                    "Company_Name": "",
-                    "Mode_of_Work": "",
-                    "Job_Role": "",
-                    "Job_Type": "",
-                    "Start_Date": "",
-                    "End_Date": "",
-                }}
-            ],
-            "Projects": [
-                {{
-                    "Name_of_Project": "",
-                    "Description": "",
-                    "Start_Date": "",
-                    "End_Date": ""
-                }}
-            ],
-            "Achievements": [
-                {{
-                    "Heading": "",
-                    "Description": "",
-                    "Start_Date": "",
-                    "End_Date": ""
-                }}
-            ],
-            "Education": [
-                {{
-                    "Degree/Course": "",
-                    "Field_of_Study": "",
-                    "Institute": "",
-                    "Marks/Percentage/GPA": "",
-                    "Start_Date": "",
-                    "End_Date": ""
-                }}
-            ],
-            "Certifications": [
-                {{
-                    "Certification_Title": "",
-                    "Issuing_Organization": "",
-                    "Date_Of_Issue": ""
-                }}
-            ],
-            "Skills": [],
-            "Extracurricular_Activities": [],
-            "Language_Competencies": [
-                {{
-                    "Language": "",
-                    "Proficiency": ""
-                }}
-            ]
-        }}""")
-        lines = response.text.split('\n')
-        truncated_lines = lines[1:-1]
-        truncated_text = '\n'.join(truncated_lines)
-        response_json = json.loads(truncated_text)
+
+        gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
+        dspy.settings.configure(lm=gem)
+
+        class Parser(dspy.Signature):
+            """
+            You are a professional resume parsing agent.
+            So do as follows:
+            1. Extract Personal Information of the applicant with keys being:
+            a. Extract name of the applicant.
+            b. Extract email of the applicant.
+            c. Extract phone number of the applicant.
+            d. Exract address of the applicant.
+            e. Extract linkedin url of the applicant (Add https:// in front of the link if it is not already present).
+            2. Extract me the Summary of the applicant if mentioned.
+            3. Extract me Work Experience details with keys being:
+            a. Company name
+            b. Mode of work (Offline/Online/Hybrid)
+            c. Job Role
+            d. Job Type (Full Time or Intern)
+            e. Start Date
+            f. End Date.
+            4. Extract me Project details with keys being:
+            a. Name of Project with short introduction of it, if mentioned
+            b. Description of project.
+            c. Start Date if any.
+            d. End Date if any
+            5. Extract me Achievement details with keys being:
+            a. Heading with short introduction of it, if mentioned
+            b. Description of the heading.
+            c. Start Date if any.
+            d. End Date if any:
+            6. Extract me Education details with keys being:
+            a. Degree/Course
+            b. Field of Study (note: usually written alongside degree, extract from 'degree' key if that is the case)
+            c. Institute
+            d. Marks/Percentage/GPA
+            e. Start Date if any
+            f. End Date/ Passing Year
+            7. Extract me Certification details with keys being:
+            a. Certification Title
+            b. Issuing Organization
+            c. Date Of Issue
+            8. List me all the skills from the following document.
+            9. List me all the extracurricular activities/hobbies from the following document.
+            10. List me all the language competencies from the following document.
+            You are to generate a valid JSON script as output. Properly deal with trailing commas while formatting the output file.
+            Take this empty json format and fill it up:
+            {
+                "Personal_Information": {{
+                    "Name": "",
+                    "Email": "",
+                    "Phone_Number": "",
+                    "Address": "",
+                    "LinkedIn_URL": ""
+                }},
+                "Summary": "",
+                "Work_Experience": [
+                    {{
+                        "Company_Name": "",
+                        "Mode_of_Work": "",
+                        "Job_Role": "",
+                        "Job_Type": "",
+                        "Start_Date": "",
+                        "End_Date": "",
+                    }}
+                ],
+                "Projects": [
+                    {{
+                        "Name_of_Project": "",
+                        "Description": "",
+                        "Start_Date": "",
+                        "End_Date": ""
+                    }}
+                ],
+                "Achievements": [
+                    {{
+                        "Heading": "",
+                        "Description": "",
+                        "Start_Date": "",
+                        "End_Date": ""
+                    }}
+                ],
+                "Education": [
+                    {{
+                        "Degree/Course": "",
+                        "Field_of_Study": "",
+                        "Institute": "",
+                        "Marks/Percentage/GPA": "",
+                        "Start_Date": "",
+                        "End_Date": ""
+                    }}
+                ],
+                "Certifications": [
+                    {{
+                        "Certification_Title": "",
+                        "Issuing_Organization": "",
+                        "Date_Of_Issue": ""
+                    }}
+                ],
+                "Skills": [],
+                "Extracurricular_Activities": [],
+                "Language_Competencies": [
+                    {{
+                        "Language": "",
+                        "Proficiency": ""
+                    }}
+                ]
+            }"""
+
+            resume = dspy.InputField(desc="This is the resume.")
+            json_resume = dspy.OutputField(desc="The JSON script of the resume.")
+
+        output = dspy.Predict(Parser)
+        response = output(resume=document_text).json_resume
+
+        text = response.replace('"Personal_Information": [],',
+                                '"Personal_Information": [{"Name": null,"Email": null,"Phone_Number": null,"Address": null,"LinkedIn_URL": null}],')
+        text = text.replace('"Work_Experience": [],',
+                            '"Work_Experience": [{"Company_Name": null,"Mode_of_Work": null,"Job_Role": null,"Start_Date": null,"End_Date": null}],')
+        text = text.replace('"Projects": [],',
+                            '"Projects": [{"Name_of_Project": null,"Description": null,"Start_Date": null,"End_Date": null}],')
+        text = text.replace('"Achievements": [],',
+                            '"Achievements": [{"Heading": null,"Description": null,"Start_Date": null,"End_Date": null}],')
+        text = text.replace('"Education": [],',
+                            '"Education": [{"Degree/Course": null,"Field_of_Study": null,"Institute": null,"Marks/Percentage/GPA": null,"Start_Date": null,"End_Date": null}],')
+        text = text.replace('"Certifications": [],',
+                            '"Certifications": [{"Certification_Title": null,"Issuing_Organization": null,"Date_Of_Issue": null}],')
+        text = text.replace('"Language_Competencies": [],',
+                            '"Language_Competencies": [{"Language": null,"Proficiency": null}],')
+
+        response_json = json.loads(text, strict=False)
         output_filename = app.config['GENERATED_JSON']
         with open(output_filename, 'w') as json_file:
             json.dump(response_json, json_file, indent=4)
-        return redirect(url_for('loading_page'))
-    
-@app.route('/loading')
-def loading_page():
-    return render_template('loading.html')
+        return redirect(url_for('resume_form'))
+
 
 @app.route('/resume_form')
 def resume_form():
@@ -198,29 +232,23 @@ def resume_form():
 # shila takes over ...
 # <======================================================================================================================3
 
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
-import dspy, json
-
-gem = dspy.Google("models/gemini-1.0-pro", api_key='AIzaSyBileOLS4Ys9Nk1X27OqBccsEmgxOWmV54')
+gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
 dspy.settings.configure(lm=gem)
 
+
 class Summary(dspy.Signature):
-  """
-  You are an expert in summarizing text resumes of candidates applying for a
-  job position. The resume is given in the format of json and your task is to
-  write the summary of this candidate from this resume. Be careful to include all
-  relevant skills mentioned in the resume.
-  """
-  resume_json = dspy.InputField(desc='This is the resume in JSON format.')
-  summary = dspy.OutputField(desc='The summary of the resume.')
+    """
+    You are an expert in summarizing text resumes of candidates applying for a
+    job position. The resume is given in the format of json and your task is to
+    write the summary of this candidate from this resume. Be careful to include all
+    relevant skills mentioned in the resume.
+    """
+    resume_json = dspy.InputField(desc='This is the resume in JSON format.')
+    summary = dspy.OutputField(desc='The summary of the resume.')
+
 
 summ = dspy.Predict(Summary)
 
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://shila:resume@localhost/resume'
-app.app_context().push()
-db = SQLAlchemy(app)
 
 class PersonalInformation(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -232,16 +260,19 @@ class PersonalInformation(db.Model):
     gen_sum = db.Column(db.String(4096))
     score = db.Column(db.Double)
 
+
 class Filter(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
-    cat = db.Column(db.String(16)) # dummy. will be changed later.
-    eli = db.Column(db.String(16)) # dummy. will be changed later.
+    cat = db.Column(db.String(16))  # dummy. will be changed later.
+    eli = db.Column(db.String(16))  # dummy. will be changed later.
+
 
 class Summary(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
     summary = db.Column(db.Text)
+
 
 class WorkExperience(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -252,6 +283,7 @@ class WorkExperience(db.Model):
     end_date = db.Column(db.Date)
     description = db.Column(db.Text)
 
+
 class ProjectDetails(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
@@ -260,10 +292,12 @@ class ProjectDetails(db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
 
+
 class Achievements(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
     achievement_description = db.Column(db.Text)
+
 
 class EducationDetails(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -275,6 +309,7 @@ class EducationDetails(db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
 
+
 class CertificationDetails(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
@@ -282,15 +317,18 @@ class CertificationDetails(db.Model):
     date_of_issue = db.Column(db.Date)
     issuing_organization = db.Column(db.String(255))
 
+
 class Skills(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
     skill = db.Column(db.String(255))
 
+
 class ExtracurricularActivities(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
     activity = db.Column(db.String(255))
+
 
 class LanguageCompetencies(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -298,8 +336,10 @@ class LanguageCompetencies(db.Model):
     language = db.Column(db.String(255))
     proficiency_level = db.Column(db.String(255))
 
-db.drop_all() # if any changes made to the above database classes.
+
+db.drop_all()  # if any changes made to the above database classes.
 db.create_all()
+
 
 @app.route('/submit', methods=['POST'])
 def submit():
@@ -309,10 +349,11 @@ def submit():
     phone = request.form['phone']
     address = request.form['address']
     linkedin = request.form['linkedin']
-    gen_sum = summ(resume_json = open('resume.json','r').read()).summary
+    gen_sum = summ(resume_json=open('resume.json', 'r').read()).summary
 
-    # @Puru replace score = None with score = <calculated_score> below.
-    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin, gen_sum=gen_sum, score = None)
+    # Scoring to be added here (PURUUUUUUUUU)
+    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
+                                        linkedin_url=linkedin, gen_sum=gen_sum, score=None)
     db.session.add(personal_info)
     db.session.commit()  # commits here to generate the id
 
@@ -320,8 +361,12 @@ def submit():
     summary_entry = Summary(personal_information_id=personal_info.id, summary=summary)
     db.session.add(summary_entry)
 
-    cat = request.form['cat']
-    eli = request.form['eli']
+    try:
+        cat = request.form['cat']
+        eli = request.form['eli']
+    except:
+        cat = None
+        eli = None
     filt = Filter(cat=cat, eli=eli)
     db.session.add(filt)
 
@@ -346,12 +391,12 @@ def submit():
             endcom.append(request.form[k])
 
     for i in range(len(compname)):
-        work_exp = WorkExperience(personal_information_id=personal_info.id, job_title=jobrole[i], company_name=compname[i],
-                                  start_date=datetime.strptime(startcom[i], '%m-%d-%Y') if startcom[i] else None, end_date=datetime.strptime(endcom[i], '%m-%d-%Y') if endcom[i] else None,
+        work_exp = WorkExperience(personal_information_id=personal_info.id, job_title=jobrole[i],
+                                  company_name=compname[i],
+                                  start_date=datetime.strptime(startcom[i], '%m-%d-%Y') if startcom[i] else None,
+                                  end_date=datetime.strptime(endcom[i], '%m-%d-%Y') if endcom[i] else None,
                                   description=workmode[i] + ', ' + jobtype[i])
         db.session.add(work_exp)
-
-
 
     proname = []
     prodes = []
@@ -367,12 +412,12 @@ def submit():
         if k.startswith('projectEnd'):
             proend.append(request.form[k])
 
-    
     for i in range(len(proname)):
-        project_detail = ProjectDetails(personal_information_id=personal_info.id, project_name=proname[i], description=prodes[i],
-                                        start_date=datetime.strptime(prostart[i], '%m-%d-%Y') if prostart[i] else None, end_date=datetime.strptime(proend[i], '%m-%d-%Y') if proend[i] else None)
+        project_detail = ProjectDetails(personal_information_id=personal_info.id, project_name=proname[i],
+                                        description=prodes[i],
+                                        start_date=datetime.strptime(prostart[i], '%m-%d-%Y') if prostart[i] else None,
+                                        end_date=datetime.strptime(proend[i], '%m-%d-%Y') if proend[i] else None)
         db.session.add(project_detail)
-
 
     achead = []
     acdes = []
@@ -389,9 +434,9 @@ def submit():
             acend.append(request.form[k])
 
     for i in range(len(achead)):
-        achievement = Achievements(personal_information_id=personal_info.id, achievement_description=achead[i] + ', ' + acdes[i])
+        achievement = Achievements(personal_information_id=personal_info.id,
+                                   achievement_description=achead[i] + ', ' + acdes[i])
         db.session.add(achievement)
-
 
     degree = []
     field = []
@@ -414,12 +459,14 @@ def submit():
             eduend.append(request.form[k])
 
     for i in range(len(degree)):
-        education_detail = EducationDetails(personal_information_id=personal_info.id, degree_course=degree[i], field_of_study=field[i],
-                                            institute=institute[i], marks_percentage_gpa=marks[i], start_date=datetime.strptime(edustart[i], '%m-%d-%Y') if edustart[i] else None,
+        education_detail = EducationDetails(personal_information_id=personal_info.id, degree_course=degree[i],
+                                            field_of_study=field[i],
+                                            institute=institute[i], marks_percentage_gpa=marks[i],
+                                            start_date=datetime.strptime(edustart[i], '%m-%d-%Y') if edustart[
+                                                i] else None,
                                             end_date=datetime.strptime(eduend[i], '%m-%d-%Y') if eduend[i] else None)
         db.session.add(education_detail)
 
-    
     certname = []
     certorg = []
     certdate = []
@@ -432,8 +479,10 @@ def submit():
             certdate.append(request.form[k])
 
     for i in range(len(certname)):
-        certification_detail = CertificationDetails(personal_information_id=personal_info.id, certification_title=certname[i],
-                                                    date_of_issue=datetime.strptime(certdate[i], '%m-%d-%Y') if certdate[i] else None, issuing_organization=certorg[i])
+        certification_detail = CertificationDetails(personal_information_id=personal_info.id,
+                                                    certification_title=certname[i],
+                                                    date_of_issue=datetime.strptime(certdate[i], '%m-%d-%Y') if
+                                                    certdate[i] else None, issuing_organization=certorg[i])
         db.session.add(certification_detail)
 
     # skills = request.form['skills']
@@ -456,17 +505,16 @@ def submit():
             language.append(request.form[k])
         if k.startswith('proficiency'):
             proficiency.append(request.form[k])
-    
+
     for i in range(len(language)):
-        language_competency = LanguageCompetencies(personal_information_id=personal_info.id, language = language[i],
-                                                   proficiency_level = proficiency[i])
+        language_competency = LanguageCompetencies(personal_information_id=personal_info.id, language=language[i],
+                                                   proficiency_level=proficiency[i])
         db.session.add(language_competency)
-    
+
     db.session.commit()
 
-
     return 'submitted successfully!'
-    
+
 
 if __name__ == '__main__':
     app.run(debug=True)

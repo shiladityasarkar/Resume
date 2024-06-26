@@ -23,7 +23,7 @@
             padding: 50px;
             border-radius: 10px;
             border-color: white;
-            //border-style: dotted;
+            border-style: dotted;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
         }
 
@@ -54,10 +54,14 @@
     </style>
 </head>
 <body>
-    <form action="{{url_for('navigate')}}" method="post">
-        <button type="button" id="candy" onclick="{{url_for('navigate', filename='templates/upload.html')}}" name="candy">For Candidates</button>
-        <button type="button" id="fac" name="fac">For Faculties</button>
+    <form action="{{url_for('candidate_button')}}" method="post">
+        <button type="submit" id="candy">For Candidates</button>
     </form>
+
+    <form action="{{url_for('hod_button')}}" method="post">
+        <button type="submit" id="fac">For Faculty</button>
+    </form>
+
     <div class="navigation-text">Navigation Page</div>
 </body>
 </html>

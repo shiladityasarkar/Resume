@@ -1,0 +1,142 @@
+{
+    "Personal_Information": {
+        "Name": "Shiladitya Sarkar",
+        "Email": "writetoshiladitya@gmail.com",
+        "Phone_Number": "+91 7047841803",
+        "Address": "Bengaluru, India",
+        "LinkedIn_URL": null
+    },
+    "Summary": "I am a mathematics enthusiast, with an unbound interest in Large Language Models - their applications, loopholes and security. I open source my findings and explain concepts here: https://medium.com/@writetoshiladitya",
+    "Work_Experience": [
+        {
+            "Company_Name": "Openhouse",
+            "Mode_of_Work": null,
+            "Job_Role": "Robotics and Automation Instructor",
+            "Job_Type": null,
+            "Start_Date": "01/2023",
+            "End_Date": "06/2023"
+        },
+        {
+            "Company_Name": "CampK12",
+            "Mode_of_Work": "Remote",
+            "Job_Role": "International Coding Instructor",
+            "Job_Type": null,
+            "Start_Date": "06/2022",
+            "End_Date": "06/2023"
+        },
+        {
+            "Company_Name": "Indian Institute of Technology (IIT), Bombay",
+            "Mode_of_Work": null,
+            "Job_Role": "Research Fellow",
+            "Job_Type": null,
+            "Start_Date": "11/2021",
+            "End_Date": "07/2022"
+        }
+    ],
+    "Projects": [
+        {
+            "Name_of_Project": "ChatEXCEL",
+            "Description": "Chat with your excel/csv/json files with ease in Natural Language or Voice commands.\n-\nPowered by Google Gemini Pro and Langchain, now create, manage, and talk to databases just by text orvoice commands.",
+            "Start_Date": null,
+            "End_Date": "present"
+        },
+        {
+            "Name_of_Project": "Preach",
+            "Description": "Generate PPTs from Multimodal Inputs (any Video, Audio or Text).\n-\nAwarded First position and 350 USD prize money in Intel OneAPI Hackathon 2024 (Generative AI) forproject Preach.",
+            "Start_Date": null,
+            "End_Date": "03/2024"
+        },
+        {
+            "Name_of_Project": "MysticML",
+            "Description": "Python library that automates data preprocessing pipeline for downstream tasks.\n-\nAuthor and manager of Python library mysticML.\n-\nProvides the most advanced preprocessing not provided by any other library.",
+            "Start_Date": null,
+            "End_Date": "01/2024"
+        },
+        {
+            "Name_of_Project": "LayerFX",
+            "Description": "Fastest Image Steganography using Java.\n-\nNovel image encryption technique used to create adversaries for neural networks as part of my research.",
+            "Start_Date": null,
+            "End_Date": "12/2023"
+        }
+    ],
+    "Achievements": [
+        {
+            "Heading": "- Awarded Gold Badge \u2013 in HackerRank's 30 Days of Code challenge.",
+            "Description": null,
+            "Start_Date": null,
+            "End_Date": null
+        },
+        {
+            "Heading": "- Secured 100/100 \u2013 in Computer Science, ICSE - 2018.",
+            "Description": null,
+            "Start_Date": null,
+            "End_Date": null
+        },
+        {
+            "Heading": "- Secured All India Rank 219 \u2013 by clearing SSB interview after passing NDA.",
+            "Description": null,
+            "Start_Date": null,
+            "End_Date": null
+        }
+    ],
+    "Education": [
+        {
+            "Degree/Course": "MSc. Artificial Intelligence and Machine Learning",
+            "Field_of_Study": null,
+            "Institute": "Christ University",
+            "Marks/Percentage/GPA": "3.98 out of 4",
+            "Start_Date": "07/2023",
+            "End_Date": "04/2025"
+        },
+        {
+            "Degree/Course": "BSc. Computer Science",
+            "Field_of_Study": null,
+            "Institute": "St. Xavier's College (Autonomous)",
+            "Marks/Percentage/GPA": null,
+            "Start_Date": "01/2021",
+            "End_Date": "06/2023"
+        }
+    ],
+    "Certifications": [
+        {
+            "Certification_Title": "Getting started with Large Language Models (LLMs) \u2013 Skillsoft",
+            "Issuing_Organization": null,
+            "Date_Of_Issue": null
+        },
+        {
+            "Certification_Title": "Introduction to Statistics \u2013 Stanford University",
+            "Issuing_Organization": null,
+            "Date_Of_Issue": null
+        },
+        {
+            "Certification_Title": "Natural Language Processing for Developers \u2013 Infosys",
+            "Issuing_Organization": null,
+            "Date_Of_Issue": null
+        },
+        {
+            "Certification_Title": "Introduction to Programming \u2013 University of Edinburgh",
+            "Issuing_Organization": null,
+            "Date_Of_Issue": null
+        }
+    ],
+    "Skills": [],
+    "Extracurricular_Activities": [],
+    "Language_Competencies": [
+        {
+            "Language": "ENGLISH",
+            "Proficiency": "Native, C2 (IELTS 8.5 certified)"
+        },
+        {
+            "Language": "GERMAN",
+            "Proficiency": "Intermediate (Goethe Zertifikat)"
+        },
+        {
+            "Language": "HINDI",
+            "Proficiency": "Native"
+        },
+        {
+            "Language": "BENGALI",
+            "Proficiency": "Native"
+        }
+    ]
+}
