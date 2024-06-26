@@ -1,20 +1,3 @@
-# from flask import Flask, render_template, request, jsonify
-# import json
-
-# app = Flask(__name__)
-# with open('resume.json') as f:
-#     resume_data = json.load(f)
-# @app.route('/')
-# def resume_form():
-#     return render_template('resume_form.html', data=resume_data)
-# @app.route('/submit', methods=['POST'])
-# def submit_form():
-#     submitted_data = request.form.to_dict()
-#     print(submitted_data)
-#     return jsonify({"message": "Form submitted successfully!"})
-# if __name__ == '__main__':
-#     app.run(debug=True)
-
 import os
 from flask import Flask, render_template, request, redirect, url_for
 # from flask import jsonify
@@ -53,8 +36,23 @@ def read_document(file_path):
         return None
     
 @app.route('/')
-def upload_page():
-    return render_template('upload.html')
+def homepage():
+    return render_template('home.html')
+
+@app.route('/navigate', methods=['POST'])
+def navigate():
+    print('hello world')
+    candy = request.form['candy']
+    fac = request.form['fac']
+    print(candy, fac)
+    return "hehe"
+
+@app.route('/filterr', methods=['POST'])
+def filterr():
+    category = request.form['category']
+    eligib_test = request.form['eligib_test']
+    print(category, eligib_test)
+    return "hehe got it!"
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -192,7 +190,6 @@ def resume_form():
     with open(app.config['GENERATED_JSON']) as f:
         resume_data = json.load(f)
     return render_template('resume_form.html', data=resume_data)
-
 
 
 # shila takes over ...
