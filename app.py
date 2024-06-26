@@ -51,8 +51,11 @@ def navigate():
 def filterr():
     category = request.form['category']
     eligib_test = request.form['eligib_test']
-    print(category, eligib_test)
-    return "hehe got it!"
+    cursor = db.connection.cursor()
+    res = cursor.execute('''SELECT personal_information_id from Filter WHERE cat like %s AND eli like %s''', (category, eligib_test))
+    cursor.close()
+    print(res)
+    return "hehe"
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -227,6 +230,13 @@ class PersonalInformation(db.Model):
     address = db.Column(db.Text)
     linkedin_url = db.Column(db.String(255))
     gen_sum = db.Column(db.String(4096))
+    score = db.Column(db.Double)
+
+class Filter(db.Model):
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
+    cat = db.Column(db.String(16)) # dummy. will be changed later.
+    eli = db.Column(db.String(16)) # dummy. will be changed later.
 
 class Summary(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -288,7 +298,7 @@ class LanguageCompetencies(db.Model):
     language = db.Column(db.String(255))
     proficiency_level = db.Column(db.String(255))
 
-# db.drop_all() if any changes made to the above database classes.
+db.drop_all() # if any changes made to the above database classes.
 db.create_all()
 
 @app.route('/submit', methods=['POST'])
@@ -301,8 +311,8 @@ def submit():
     linkedin = request.form['linkedin']
     gen_sum = summ(resume_json = open('resume.json','r').read()).summary
 
-
-    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin, gen_sum=gen_sum)
+    # @Puru replace score = None with score = <calculated_score> below.
+    personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address, linkedin_url=linkedin, gen_sum=gen_sum, score = None)
     db.session.add(personal_info)
     db.session.commit()  # commits here to generate the id
 
@@ -310,7 +320,10 @@ def submit():
     summary_entry = Summary(personal_information_id=personal_info.id, summary=summary)
     db.session.add(summary_entry)
 
-
+    cat = request.form['cat']
+    eli = request.form['eli']
+    filt = Filter(cat=cat, eli=eli)
+    db.session.add(filt)
 
     compname = []
     workmode = []
