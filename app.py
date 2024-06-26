@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for
 import fitz
 from docx import Document
-import google.generativeai as genai
+# import google.generativeai as genai
+import pandas as pd
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import text
 from datetime import datetime
@@ -227,6 +228,29 @@ def resume_form():
     with open(app.config['GENERATED_JSON']) as f:
         resume_data = json.load(f)
     return render_template('resume_form.html', data=resume_data)
+
+@app.route('/analytics')
+def view_analytics():
+    df = pd.DataFrame()
+    session = db.session()
+    res = session.execute(text(f'''SELECT COUNT(id) FROM personal_information''')).cursor
+    df['total_applicant_count'] = res
+    df.to_excel('Applicant_Count.xlsx')
+    df = pd.DataFrame()
+    bac = session.execute(text(
+        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'B%' or field_of_study LIKE 'b%' ''')).cursor
+    mas = session.execute(text(
+        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'M%' or field_of_study LIKE 'm%' ''')).cursor
+    phd = session.execute(text(
+        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'PhD%' or field_of_study LIKE 'phd%'
+            or field_of_study LIKE 'Phd%' or field_of_study LIKE 'PHD%' ''')).cursor
+
+    df['Bachelors'] = bac
+    df['Masters'] = mas
+    df['Doctorate'] = phd
+    df.to_excel('EducationLevel.xlsx')
+
+    return render_template('home.html')
 
 
 # shila takes over ...

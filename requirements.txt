@@ -6,3 +6,4 @@ accelerate
 torch
 huggingface-hub
 google-generativeai
+pandas
