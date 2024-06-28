@@ -82,7 +82,7 @@
             -webkit-text-fill-color: transparent;
             -text-fill-color: transparent;
             background-size: 500% auto;
-            animation: textShine 5s ease-in-out infinite alternate;
+            animation: textShine 2s ease-in-out infinite alternate;
         }
 
         @keyframes textShine {
@@ -102,24 +102,29 @@
             <div class="form-group">
                 <label for="category">Employee Category:</label>
                 <select id="category" name="category">
-                    <option value="cat1">Category 1</option>
-                    <option value="cat2">Category 2</option>
-                    <option value="cat3">Category 3</option>
-                    <option value="cat4">Category 4</option>
+                    <option value="cat1">General</option>
+                    <option value="cat2">Scheduled Caste</option>
+                    <option value="cat3">Scheduled Tribe</option>
+                    <option value="cat4">OBC</option>
                 </select>
             </div>
             <div class="form-group">
                 <label for="eligib_test">Eligibility Test:</label>
                 <select id="eligib_test" name="eligib_test">
-                    <option value="eli1">Test 1</option>
-                    <option value="eli2">Test 2</option>
-                    <option value="eli3">Test 3</option>
-                    <option value="eli4">Test 4</option>
+                    <option value="eli1">AIR</option>
+                    <option value="eli2">CAT</option>
+                    <option value="eli3">NET</option>
+                    <option value="eli4">GATE</option>
                 </select>
+
+                <label for="work_ex">Work Experience (in years)</label>
+                <input id="work_ex" name="work_ex" type="Number">
+                <label for="hod_txt">Enter further requirements here...</label>
+                <input type="text" id="hod_txt" name="hod_txt">
             </div>
             <div class="form-group">
                 <button type="submit">Submit</button>
-                <button>View Analytics</button>
+                <button type="submit" formaction="{{url_for('view_analytics')}}">View Analytics</button>
             </div>
         </form>
     </div>

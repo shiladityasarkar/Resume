@@ -3,13 +3,14 @@ from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for
 import fitz
 from docx import Document
-# import google.generativeai as genai
 import pandas as pd
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import text
 from datetime import datetime
 import dspy
 import json
+from scoring import Scoring
+from extract_from_db import get_resume_info
 
 load_dotenv()
 app = Flask(__name__)
@@ -18,7 +19,7 @@ app.config['GENERATED_JSON'] = 'resume.json'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Configuring the database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://shila:resume@localhost/resume'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ["DB_CONNECTION"]
 app.app_context().push()
 db = SQLAlchemy(app)
 
@@ -71,7 +72,7 @@ def filterr():
     session = db.session()
     res = session.execute(text(f'''SELECT personal_information_id from Filter''')).cursor
     session.close()
-    return render_template('home.html')
+    return render_template('filter.html')
 
 
 @app.route('/upload', methods=['POST'])
@@ -229,32 +230,37 @@ def resume_form():
         resume_data = json.load(f)
     return render_template('resume_form.html', data=resume_data)
 
-@app.route('/analytics')
+@app.route('/analytics', methods=['POST', 'GET'])
 def view_analytics():
     df = pd.DataFrame()
     session = db.session()
-    res = session.execute(text(f'''SELECT COUNT(id) FROM personal_information''')).cursor
-    df['total_applicant_count'] = res
+    res = session.execute(text(f'''SELECT COUNT(id) FROM personal_information'''))
+
+    for count in res:
+        df['total_applicant_count'] = count
     df.to_excel('Applicant_Count.xlsx')
     df = pd.DataFrame()
     bac = session.execute(text(
-        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'B%' or field_of_study LIKE 'b%' ''')).cursor
+        f'''SELECT COUNT(field_of_study) FROM education_details WHERE field_of_study LIKE 'B%' or field_of_study LIKE 'b%' '''))
     mas = session.execute(text(
-        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'M%' or field_of_study LIKE 'm%' ''')).cursor
+        f'''SELECT COUNT(field_of_study) FROM education_details WHERE field_of_study LIKE 'M%' or field_of_study LIKE 'm%' '''))
     phd = session.execute(text(
-        f'''SELECT COUNT(field_of_study) FROM educaion_details WHERE field_of_study LIKE 'PhD%' or field_of_study LIKE 'phd%'
-            or field_of_study LIKE 'Phd%' or field_of_study LIKE 'PHD%' ''')).cursor
+        f'''SELECT COUNT(field_of_study) FROM education_details WHERE field_of_study LIKE 'PhD%' or field_of_study LIKE 'phd%'
+            or field_of_study LIKE 'Phd%' or field_of_study LIKE 'PHD%' '''))
 
-    df['Bachelors'] = bac
-    df['Masters'] = mas
-    df['Doctorate'] = phd
+    for count in bac:
+        df['Bachelors'] = count
+    for count in mas:
+        df['Masters'] = count
+    for count in phd:
+        df['Doctorate'] = count
     df.to_excel('EducationLevel.xlsx')
 
     return render_template('home.html')
 
 
 # shila takes over ...
-# <======================================================================================================================3
+# <======================================================================================================================>
 
 gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
 dspy.settings.configure(lm=gem)
@@ -361,7 +367,7 @@ class LanguageCompetencies(db.Model):
     proficiency_level = db.Column(db.String(255))
 
 
-db.drop_all()  # if any changes made to the above database classes.
+# db.drop_all()  # if any changes made to the above database classes.
 db.create_all()
 
 
@@ -375,7 +381,6 @@ def submit():
     linkedin = request.form['linkedin']
     gen_sum = summ(resume_json=open('resume.json', 'r').read()).summary
 
-    # Scoring to be added here (PURUUUUUUUUU)
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
                                         linkedin_url=linkedin, gen_sum=gen_sum, score=None)
     db.session.add(personal_info)
@@ -414,7 +419,10 @@ def submit():
         if k.startswith('endDate'):
             endcom.append(request.form[k])
 
+    scoring_we = []
     for i in range(len(compname)):
+        # For scoring
+        scoring_we.append(compname[i] + ',' + jobrole[i] + ',' + workmode[i] + ',' + jobtype[i])
         work_exp = WorkExperience(personal_information_id=personal_info.id, job_title=jobrole[i],
                                   company_name=compname[i],
                                   start_date=datetime.strptime(startcom[i], '%m-%d-%Y') if startcom[i] else None,
@@ -436,7 +444,10 @@ def submit():
         if k.startswith('projectEnd'):
             proend.append(request.form[k])
 
+    scoring_prj = []
     for i in range(len(proname)):
+        # For scoring
+        scoring_prj.append(proname[i] + ',' + prodes[i])
         project_detail = ProjectDetails(personal_information_id=personal_info.id, project_name=proname[i],
                                         description=prodes[i],
                                         start_date=datetime.strptime(prostart[i], '%m-%d-%Y') if prostart[i] else None,
@@ -457,7 +468,10 @@ def submit():
         if k.startswith('achievementEndDate'):
             acend.append(request.form[k])
 
+    scoring_ach = []
     for i in range(len(achead)):
+        # For scoring
+        scoring_ach.append(achead[i] + ', ' + acdes[i])
         achievement = Achievements(personal_information_id=personal_info.id,
                                    achievement_description=achead[i] + ', ' + acdes[i])
         db.session.add(achievement)
@@ -482,7 +496,10 @@ def submit():
         if k.startswith('endDate'):
             eduend.append(request.form[k])
 
+    scoring_ed = []
     for i in range(len(degree)):
+        # For scoring
+        scoring_ed.append(degree[i] + ',' + institute[i] + ',' + marks[i])
         education_detail = EducationDetails(personal_information_id=personal_info.id, degree_course=degree[i],
                                             field_of_study=field[i],
                                             institute=institute[i], marks_percentage_gpa=marks[i],
@@ -502,7 +519,10 @@ def submit():
         if k.startswith('issueDate'):
             certdate.append(request.form[k])
 
+    scoring_cert = []
     for i in range(len(certname)):
+        # For scoring
+        scoring_cert.append(certname[i] + ',' + certorg[i])
         certification_detail = CertificationDetails(personal_information_id=personal_info.id,
                                                     certification_title=certname[i],
                                                     date_of_issue=datetime.strptime(certdate[i], '%m-%d-%Y') if
@@ -537,7 +557,21 @@ def submit():
 
     db.session.commit()
 
-    return 'submitted successfully!'
+    # Scoring
+    resume_info = {'Summary':gen_sum,
+                   'Work Experience':scoring_we,
+                   'Projects':scoring_prj,
+                   'Achievements':scoring_ach,
+                   'Education Details':scoring_ed,
+                   'Certifications':scoring_cert,
+                   'Skills':skills,
+                   'Languages':language}
+
+    jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
+
+    resume_score = Scoring(jd_text, resume_info).final_similarity()
+
+    return f'Your score is: {resume_score}'
 
 
 if __name__ == '__main__':

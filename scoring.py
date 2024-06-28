@@ -1,3 +1,4 @@
+import os
 import json
 import torch
 import dspy
@@ -9,6 +10,7 @@ from extract_from_db import get_resume_info
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class JobDescription(dspy.Signature):
     """
@@ -39,7 +41,8 @@ class JobDescription(dspy.Signature):
     """
     jd = dspy.InputField(desc='This is the job description.')
     summary = dspy.OutputField(desc='JSON script for the job description.')
-            
+
+
 class Scoring:
 
     def __init__(self, job_description, resume):
@@ -51,11 +54,10 @@ class Scoring:
         dspy.settings.configure(lm=llm)
 
         output = dspy.Predict(JobDescription)
-        response = json.loads(output(jd = self.job_description).summary[8:-4])
+        response = json.loads(output(jd=self.job_description).summary[8:-4])
         self.response = self.remove_nulls(response)
 
         return None
-
 
     # Function to remove null values from the output
     def remove_nulls(self, value):
@@ -65,7 +67,7 @@ class Scoring:
             return [self.remove_nulls(item) for item in value if item is not None]
         else:
             return value
-        
+
     # Function to calculate the final similarity score
     def final_similarity(self):
         model_name = 'intfloat/e5-small-v2'
@@ -82,52 +84,51 @@ class Scoring:
 
                 response_embedding = self.get_embeddings(response_field, tokenizer, model)
                 resume_embedding = self.get_embeddings(resume_field, tokenizer, model)
-                
+
                 cosine = self.cosine_sim(response_embedding, resume_embedding)
                 euclidean = self.frobenius_sim(response_embedding, resume_embedding)
-                
+
                 similarity_arr[field] = (alpha * cosine + (1 - alpha) * euclidean).item()
             else:
                 similarity_arr[field] = 0
-                
+
         final_score = 0
         for i in similarity_arr.values():
-            final_score += (100/8) * i
-            
-        return final_score
+            final_score += (100 / 8) * i
 
+        return final_score
 
     # Function to get the text embeddings
     def get_embeddings(self, text, tokenizer, model):
         inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
-        
+
         with torch.no_grad():
             outputs = model(**inputs)
-        
+
         embeddings = outputs.last_hidden_state.mean(dim=1)
         return embeddings
-    
+
     # Function to calculate the cosine similarity
     def cosine_sim(self, response_embedding, resume_embedding):
         similarity = cosine_similarity(resume_embedding.numpy(), resume_embedding.numpy())
         return 1. if similarity[0][0] > 1 else similarity[0][0]
-    
+
     # Function to calculate the Frobenius norm
     def frobenius_sim(self, response_embedding, resume_embedding):
         return 1 / (1 + abs(torch.norm(response_embedding) - torch.norm(resume_embedding)))
-    
+
 # Driver code
-if __name__ == "__main__":
-    # Getting the job description
-    jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
+# if __name__ == "__main__":
+#     # Getting the job description
+#     jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
 
-    # Getting the resumes
-    resume_info = get_resume_info()
+#     # Getting the resumes
+#     resume_info = get_resume_info()
 
-    # Scoring the resumes
-    scores = dict()
-    for idx, resume in zip(resume_info.keys(), resume_info.values()):
-        resume['Summary'] = resume['Personal Information'][5]['gen_sum']
-        scores[idx] = Scoring(jd_text, resume).final_similarity()
+#     # Scoring the resumes
+#     scores = dict()
+#     for idx, resume in zip(resume_info.keys(), resume_info.values()):
+#         resume['Summary'] = resume['Personal Information'][5]['gen_sum']
+#         scores[idx] = Scoring(jd_text, resume).final_similarity()
 
-    print(scores)
+#     print(scores)
