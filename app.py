@@ -353,6 +353,7 @@ def view_analytics():
         FROM work_experience GROUP BY personal_information_id'''))
     ress = [dict(row._mapping) for row in res]
     df = pd.DataFrame(ress)
+    df = df.apply(pd.to_numeric)
     df.to_excel('Work.xlsx', index=False)
 
     res = session.execute(text('''SELECT skill, COUNT(*) AS frequency FROM skills GROUP BY  skill ORDER BY frequency DESC'''))
