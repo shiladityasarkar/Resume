@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-from datetime import date
 import flask
 from flask import Flask, render_template, request, redirect, url_for
 import fitz
@@ -44,68 +43,108 @@ dash_app = dash.Dash(__name__, server=app, external_stylesheets=[dbc.themes.BOOT
 applicant_count_df = pd.read_excel('Applicant_Count.xlsx')
 total_applicant_count = applicant_count_df['applicant_count'].iloc[0]
 
-work_ex_years_df = pd.read_excel('Work.xlsx')
-work_ex_years = work_ex_years_df.iloc[0].to_dict()
+work_df = pd.read_excel('Work.xlsx')
+education_df = pd.read_excel('Education.xlsx')
+skills_df = pd.read_excel('Skills.xlsx')
+time_df = pd.read_excel('Time.xlsx')
 
-education_level_df = pd.read_excel('Education.xlsx')
-education_levels = education_level_df.iloc[0].to_dict()
-
-total_applicant_fig = go.Figure(go.Bar(
-    x=['Total Applicants'],
-    y=[total_applicant_count],
-    marker_color='blue'
-))
-total_applicant_fig.update_layout(
-    title_text='Total Applicants',
-    xaxis_title='',
-    yaxis_title='Count',
-    font=dict(size=10),
-    margin=dict(l=10, r=10, t=30, b=10)
-)
+colors = {
+    'primary': '#2b377c',
+    'secondary': '#f2efe9',
+    'tertiary': '#cbb27f',
+    'background': 'rgba(0, 0, 0, 0)'
+}
 
 work_ex_fig = px.bar(
-    x=list(work_ex_years.keys()),
-    y=list(work_ex_years.values()),
-    labels={'x': 'Years of Experience', 'y': 'Number of Applicants'},
-    title='Work Experience Years Distribution'
+    work_df,
+    x='experience_years',
+    y='count',
+    labels={'experience_years': 'Work Experience (years)', 'count': 'Count'},
+    title='Work Experience Count Distribution'
 )
+work_ex_fig.update_traces(marker_color=colors['primary'], opacity=0.6)
 work_ex_fig.update_layout(
-    font=dict(size=10),
-    margin=dict(l=10, r=10, t=30, b=10)
+    font=dict(size=16),
+    margin=dict(l=10, r=10, t=80, b=20),
+    xaxis=dict(tickmode='linear', dtick=1),
+    plot_bgcolor=colors['secondary'],
+    paper_bgcolor=colors['background']
 )
 
-education_level_fig = px.pie(
-    names=list(education_levels.keys()),
-    values=list(education_levels.values()),
+education_fig = px.pie(
+    education_df,
+    names=education_df.columns,
+    values=education_df.iloc[0],
     title='Education Level Distribution'
 )
-education_level_fig.update_layout(
-    font=dict(size=10),
-    margin=dict(l=10, r=10, t=30, b=10)
+education_fig.update_traces(marker=dict(colors=[colors['primary'], colors['tertiary'], colors['secondary']]), opacity=0.6)
+education_fig.update_layout(
+    font=dict(size=16),
+    margin=dict(l=10, r=10, t=80, b=20),
+    plot_bgcolor=colors['secondary'],
+    paper_bgcolor=colors['background']
 )
 
-wordcloud = WordCloud(background_color='white').generate_from_frequencies(education_levels)
-plt.figure(figsize=(4, 2.5))
-plt.imshow(wordcloud, interpolation='bilinear')
-plt.axis('off')
-plt.title('Top Skills', fontsize=5, loc='left')
-plt.savefig('static/wordcloud.png', dpi=1500, bbox_inches='tight')
-plt.close()
+skills_fig = px.bar(
+    skills_df,
+    x='frequency',
+    y='skill',
+    orientation='h',
+    labels={'frequency': 'Frequency', 'skill': 'Skills'},
+    title='Top Skills Frequency Distribution',
+    category_orders={'skill': skills_df['skill'].tolist()}
+)
+skills_fig.update_traces(marker_color=colors['tertiary'], opacity=0.6)
+skills_fig.update_layout(
+    font=dict(size=16),
+    margin=dict(l=10, r=10, t=80, b=20),
+    plot_bgcolor=colors['secondary'],
+    paper_bgcolor=colors['background']
+)
+
+time_df['time_stamp'] = pd.to_datetime(time_df['time_stamp']).dt.date
+time_aggregated = time_df.groupby('time_stamp').size().reset_index(name='count')
+time_aggregated = time_aggregated.sort_values('time_stamp')
+time_fig = px.line(
+    time_aggregated,
+    x='time_stamp',
+    y='count',
+    labels={'time_stamp': 'Date', 'count': 'Submission Count'},
+    title='Submission Time Distribution'
+)
+time_fig.update_traces(line_color=colors['primary'], opacity=0.6)
+time_fig.update_layout(
+    font=dict(size=16),
+    margin=dict(l=10, r=10, t=80, b=20),
+    xaxis=dict(
+        tickmode='array',
+        tickvals=time_aggregated['time_stamp'],
+        tickformat='%Y-%m-%d'
+    ),
+    yaxis=dict(
+        tickmode='linear',
+        dtick=1
+    ),
+    plot_bgcolor=colors['secondary'],
+    paper_bgcolor=colors['background']
+)
 
 dash_app.layout = dbc.Container([
     dbc.Row([
-        dbc.Col(html.H1("Analytics Dashboard", className='text-center text-primary mb-4', style={'fontSize': '24px'}), width=12)
+        dbc.Col(html.H1("Analytics Dashboard", className='text-center mb-4', style={'fontSize': '24px', 'color': colors['primary']}), width=12)
     ]),
     dbc.Row([
-        dbc.Col(dcc.Graph(figure=total_applicant_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6),
-        dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6)
+        dbc.Col(html.H2(f"Total Applicants: {total_applicant_count}", className='text-center', style={'fontSize': '18px', 'color': '#000000'}), width=12)
     ]),
     dbc.Row([
-        dbc.Col(dcc.Graph(figure=education_level_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6),
-        dbc.Col(html.Img(src='/static/wordcloud.png', style={'width': '100%', 'height': 'auto'}), xs=12, sm=12, md=6, lg=6, xl=6)
+        dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
+        dbc.Col(dcc.Graph(figure=education_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
+    ]),
+    dbc.Row([
+        dbc.Col(dcc.Graph(figure=skills_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
+        dbc.Col(dcc.Graph(figure=time_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
     ])
 ], fluid=True)
-
 #===========================================END DASH================================================
 #===================================================================================================
 
@@ -354,6 +393,8 @@ def view_analytics():
     ress = [dict(row._mapping) for row in res]
     df = pd.DataFrame(ress)
     df = df.apply(pd.to_numeric)
+    df['experience_years'] = df['total_workex'] // 365
+    df = df.groupby('experience_years').size().reset_index(name='count')
     df.to_excel('Work.xlsx', index=False)
 
     res = session.execute(text('''SELECT skill, COUNT(*) AS frequency FROM skills GROUP BY  skill ORDER BY frequency DESC'''))
@@ -499,7 +540,7 @@ def submit():
 
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
                                         linkedin_url=linkedin, gen_sum=gen_sum, link=resume_filepath,
-                                        time_stamp = date.today())
+                                        time_stamp = datetime.today())
     db.session.add(personal_info)
     db.session.commit()  # commits here to generate the id
 
