@@ -62,7 +62,9 @@ work_ex_fig = px.bar(
     labels={'experience_years': 'Work Experience (years)', 'count': 'Count'},
     title='Work Experience Count Distribution'
 )
+
 work_ex_fig.update_traces(marker_color=colors['primary'], opacity=0.6)
+
 work_ex_fig.update_layout(
     font=dict(size=16),
     margin=dict(l=10, r=10, t=80, b=20),
@@ -77,6 +79,7 @@ education_fig = px.pie(
     values=education_df.iloc[0],
     title='Education Level Distribution'
 )
+
 education_fig.update_traces(marker=dict(colors=[colors['primary'], colors['tertiary'], colors['secondary']]), opacity=0.6)
 education_fig.update_layout(
     font=dict(size=16),
@@ -137,7 +140,7 @@ dash_app.layout = dbc.Container([
         dbc.Col(html.H2(f"Total Applicants: {total_applicant_count}", className='text-center', style={'fontSize': '18px', 'color': '#000000'}), width=12)
     ]),
     dbc.Row([
-        dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
+                dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
         dbc.Col(dcc.Graph(figure=education_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
     ]),
     dbc.Row([
@@ -145,6 +148,7 @@ dash_app.layout = dbc.Container([
         dbc.Col(dcc.Graph(figure=time_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
     ])
 ], fluid=True)
+
 #===========================================END DASH================================================
 #===================================================================================================
 
@@ -187,16 +191,20 @@ def candidate_button():
 @app.route('/hod_button', methods=['POST', 'GET'])
 def hod_button():
     session = db.session()
-    ### Take username and password in two variables here from the login form. @Puru
-    return render_template('hod_form.html')
-
+    name = request.form.get('username')
+    password = request.form.get('password')
+    res = session.execute(text(f"SELECT username FROM faculty WHERE username LIKE '{name}' AND password LIKE '{password}'"))
+    try:
+        list([dict(row._mapping) for row in res][0].values())[0]
+        return render_template('hod_form.html')
+    except:
+        pass #to-do: write the code to display wrong credentials - enter again... @puru
 
 @app.route('/filterr', methods=['POST', 'GET'])
 def filterr():
     session = db.session()
     res = session.execute(text("SELECT p.name, p.email, p.phone_number, p.link, s.score FROM personal_information p JOIN score s WHERE p.id = s.personal_information_id ORDER BY s.score DESC;")).cursor
     session.close()
-
     return render_template('filter.html', data=res)
 
 @app.route('/login',  methods=['POST', 'GET'])
@@ -402,6 +410,7 @@ def view_analytics():
     df = pd.DataFrame(res)
     df.to_excel('Skills.xlsx', index=False)
     session.close()
+
     return flask.redirect('/plotly/')
 
 @app.route('/feedback')
@@ -426,7 +435,9 @@ class Summary(dspy.Signature):
     resume_json = dspy.InputField(desc='This is the resume in JSON format.')
     summary = dspy.OutputField(desc='The summary of the resume.')
 
+
 summ = dspy.Predict(Summary)
+
 
 class PersonalInformation(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -540,7 +551,7 @@ def submit():
 
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
                                         linkedin_url=linkedin, gen_sum=gen_sum, link=resume_filepath,
-                                        time_stamp = datetime.today())
+                                        time_stamp=datetime.today())
     db.session.add(personal_info)
     db.session.commit()  # commits here to generate the id
 
@@ -723,7 +734,7 @@ def submit():
                    'Skills':skills,
                    'Languages':language}
 
-    jd_text = open(r"C:\StrangerCodes\Resume\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
+    jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
 
     resume_score = Scoring(jd_text, resume_info).final_similarity()
     db.session.add(Score(personal_information_id=personal_info.id, 
