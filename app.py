@@ -1,8 +1,13 @@
+import math
 import os
+import re
 from dotenv import load_dotenv
+import random
 import flask
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, jsonify, render_template, request, redirect, url_for
 import fitz
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_groq import ChatGroq
 from docx import Document
 import pandas as pd
 from flask_sqlalchemy import SQLAlchemy
@@ -15,11 +20,11 @@ import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import plotly.express as px
-import plotly.graph_objects as go
-from wordcloud import WordCloud
+# import plotly.graph_objects as go
+# from wordcloud import WordCloud
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 load_dotenv()
 app = Flask(__name__)
@@ -193,6 +198,7 @@ def hod_button():
     session = db.session()
     name = request.form.get('username')
     password = request.form.get('password')
+    
     res = session.execute(text(f"SELECT username FROM faculty WHERE username LIKE '{name}' AND password LIKE '{password}'"))
     try:
         list([dict(row._mapping) for row in res][0].values())[0]
@@ -200,12 +206,107 @@ def hod_button():
     except:
         pass #to-do: write the code to display wrong credentials - enter again... @puru
 
-@app.route('/filterr', methods=['POST', 'GET'])
-def filterr():
+def generate_vectors(jd_vec, dist):
+    def random_unit_vector():
+        x = random.uniform(-1, 1)
+        y = random.uniform(-1, 1)
+        z = random.uniform(-1, 1)
+        length = math.sqrt(x * x + y * y + z * z)
+        
+        if length == 0:
+            return random_unit_vector()  # Prevent division by zero
+        
+        return [x / length, y / length, z / length]
+
+    unit_vec = random_unit_vector()
+    new_vec = [
+        jd_vec[0] + unit_vec[0] * dist,
+        jd_vec[1] + unit_vec[1] * dist,
+        jd_vec[2] + unit_vec[2] * dist,
+    ]
+    
+    return new_vec
+
+@app.route('/filter_candidates')
+def filter_candidates():
+    # res = request.args.get('res')
+    parsed_res = request.args.get('parsed_res')
+    resume_vecs = request.args.get('resume_vecs')
+    return render_template('filter.html', data=[json.loads(parsed_res), parsed_res, resume_vecs])
+
+@app.route('/no_match', methods=['GET'])
+def no_match():
+    return render_template('no_match.html')
+
+@app.route('/regular_submit', methods=['POST'])
+def regular_submit():
     session = db.session()
     res = session.execute(text("SELECT p.name, p.email, p.phone_number, p.link, s.score FROM personal_information p JOIN score s WHERE p.id = s.personal_information_id ORDER BY s.score DESC;")).cursor
     session.close()
-    return render_template('filter.html', data=res)
+
+    # Creating vectors for all the resumes
+    jd_vec = [10, 10, 10]
+    dist = 1
+    resume_vecs = []
+
+    for _ in list(res):
+        resume_vecs.append(generate_vectors(jd_vec, dist))
+        dist += 1
+
+    parsed_res = json.dumps(list(res))
+    return jsonify({
+        'redirect': url_for('filter_candidates', 
+                        parsed_res=parsed_res, 
+                        resume_vecs=json.dumps(resume_vecs))
+    })
+
+@app.route('/exact_match', methods=['POST'])
+def exact_match():
+    # Getting data stored in the text area
+    info = request.get_json()
+    # Getting the generated summary
+    session = db.session()
+    gen_sum = session.execute(text("SELECT id, gen_sum FROM personal_information; ")).cursor
+    
+    # Checking for exact match
+    matching_id = set()
+    for req in list(gen_sum):
+        for words in info['txtbox'].split():
+            for match in req[1].split():
+                if re.search(r'\b' + words + r'\b', match):
+                    matching_id.add(req[0])
+                
+    # Calling an empty page if there are no matching ids
+    if not matching_id:
+        return jsonify({'redirect': url_for('no_match')})
+
+    # Getting the resumes with matching ids
+    matching_id_str = ', '.join(map(str, matching_id))
+    res = session.execute(text(f"""
+            SELECT p.name, p.email, p.phone_number, p.link, s.score
+            FROM personal_information p
+            JOIN score s ON p.id = s.personal_information_id
+            WHERE p.id IN ({matching_id_str})
+            ORDER BY s.score DESC;
+            """)).cursor
+    session.close()
+
+    # Creating vectors for all the resumes
+    jd_vec = [10, 10, 10]
+    dist = 1
+    resume_vecs = []
+
+    for _ in list(res):
+        resume_vecs.append(generate_vectors(jd_vec, dist))
+        dist += 1
+
+    parsed_res = json.dumps(list(res))
+    return jsonify({
+        'redirect': url_for('filter_candidates', 
+                        parsed_res=parsed_res, 
+                        resume_vecs=json.dumps(resume_vecs))
+    })
+
 
 @app.route('/login',  methods=['POST', 'GET'])
 def login():
@@ -224,7 +325,6 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
         document_text = read_document(file_path)
-
         gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
         dspy.settings.configure(lm=gem)
 
@@ -394,7 +494,7 @@ def view_analytics():
     res = session.execute(text('''SELECT time_stamp FROM personal_information'''))
     ress = [dict(row._mapping) for row in res]
     df = pd.DataFrame(ress)
-    df.to_excel('Time.xlsx', index=False)
+    # df.to_excel('Time.xlsx', index=False)
 
     res = session.execute(text('''SELECT personal_information_id, SUM(DATEDIFF(end_date, start_date)) AS total_workex
         FROM work_experience GROUP BY personal_information_id'''))
@@ -403,7 +503,7 @@ def view_analytics():
     df = df.apply(pd.to_numeric)
     df['experience_years'] = df['total_workex'] // 365
     df = df.groupby('experience_years').size().reset_index(name='count')
-    df.to_excel('Work.xlsx', index=False)
+    # df.to_excel('Work.xlsx', index=False)
 
     res = session.execute(text('''SELECT skill, COUNT(*) AS frequency FROM skills GROUP BY  skill ORDER BY frequency DESC'''))
     res = [dict(row._mapping) for row in res]
@@ -425,18 +525,37 @@ gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
 dspy.settings.configure(lm=gem)
 
 
-class Summary(dspy.Signature):
-    """
-    You are an expert in summarizing text resumes of candidates applying for a
-    job position. The resume is given in the format of json and your task is to
-    write the summary of this candidate from this resume. Be careful to include all
-    relevant skills mentioned in the resume.
-    """
-    resume_json = dspy.InputField(desc='This is the resume in JSON format.')
-    summary = dspy.OutputField(desc='The summary of the resume.')
+# class Summary(dspy.Signature):
+#     """
+#     You are an expert in summarizing text resumes of candidates applying for a
+#     job position. The resume is given in the format of json and your task is to
+#     write the summary of this candidate from this resume. Be careful to include all
+#     relevant skills mentioned in the resume.
+#     """
+#     resume_json = dspy.InputField(desc='This is the resume in JSON format.')
+#     summary = dspy.OutputField(desc='The summary of the resume.')
+
+def summ(rj):
+    chat = ChatGroq(
+        temperature=0,
+        model="llama3-70b-8192",
+        api_key="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"
+    )
+    system = '''You are an expert to fetch all the keywords from a given resume.
+                You will be given a resume in json format.
+                Read the entire resume and figure out all the keywords.
+                Be careful that your list MUST include ALL the keywords mentioned in the resume.
+                Start with 1.
+             '''
+    human = "{resume}"
+    this = {"resume":rj}
+    prompt = ChatPromptTemplate.from_messages([("system", system), ("human", human)])
+    chain = prompt | chat
+    kws = chain.invoke(this).content
+    return ' '.join([match.strip() for match in re.findall(r'\d+\.(.*)', kws)])
 
 
-summ = dspy.Predict(Summary)
+# summ = dspy.Predict(Summary)
 
 
 class PersonalInformation(db.Model):
@@ -547,7 +666,7 @@ def submit():
     phone = request.form['phone']
     address = request.form['address']
     linkedin = request.form['linkedin'].lower()
-    gen_sum = summ(resume_json=open('resume.json', 'r').read()).summary
+    gen_sum = summ(open('resume.json', 'r').read())
 
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
                                         linkedin_url=linkedin, gen_sum=gen_sum, link=resume_filepath,
@@ -705,7 +824,7 @@ def submit():
         skill_entry = Skills(personal_information_id=personal_info.id, skill=skill.strip())
         db.session.add(skill_entry)
 
-    activities = request.form['activities']
+    activities = request.form['activities'].split(',')
 
     for activity in activities:
         activity_entry = ExtracurricularActivities(personal_information_id=personal_info.id, activity=activity.strip())
@@ -734,7 +853,7 @@ def submit():
                    'Skills':skills,
                    'Languages':language}
 
-    jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
+    jd_text = open(r"C:\StrangerCodes\Resume\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
 
     resume_score = Scoring(jd_text, resume_info).final_similarity()
     db.session.add(Score(personal_information_id=personal_info.id, 
