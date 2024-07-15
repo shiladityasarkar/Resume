@@ -1,30 +1,29 @@
 import math
 import os
 import re
+from typing import List
 from dotenv import load_dotenv
 import random
 import flask
 from flask import Flask, jsonify, render_template, request, redirect, url_for
 import fitz
-from langchain_core.prompts import ChatPromptTemplate
+import groq
+from docx import Document
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_groq import ChatGroq
 from docx import Document
 import pandas as pd
 from flask_sqlalchemy import SQLAlchemy
+from pydantic import BaseModel, Field
 from sqlalchemy.sql import text
 from datetime import datetime
-import dspy
 import json
 from scoring import Scoring
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 import plotly.express as px
-# import plotly.graph_objects as go
-# from wordcloud import WordCloud
-import matplotlib
-matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
 
 load_dotenv()
 app = Flask(__name__)
@@ -40,8 +39,8 @@ db = SQLAlchemy(app)
 # Storing the filepath
 resume_filepath = ""
 
-#==================================THAT DASH CODE=======================================
-#=======================================================================================
+# ==================================THAT DASH CODE=======================================
+# =======================================================================================
 
 dash_app = dash.Dash(__name__, server=app, external_stylesheets=[dbc.themes.BOOTSTRAP], url_base_pathname='/plotly/')
 
@@ -85,14 +84,15 @@ education_fig = px.pie(
     title='Education Level Distribution'
 )
 
-education_fig.update_traces(marker=dict(colors=[colors['primary'], colors['tertiary'], colors['secondary']]), opacity=0.6)
+education_fig.update_traces(marker=dict(colors=[colors['primary'], colors['tertiary'], colors['secondary']]),
+                            opacity=0.6)
 education_fig.update_layout(
     font=dict(size=16),
     margin=dict(l=10, r=10, t=80, b=20),
     plot_bgcolor=colors['secondary'],
     paper_bgcolor=colors['background']
 )
-
+skills_df = skills_df.nlargest(15, 'frequency')
 skills_fig = px.bar(
     skills_df,
     x='frequency',
@@ -139,42 +139,49 @@ time_fig.update_layout(
 
 dash_app.layout = dbc.Container([
     dbc.Row([
-        dbc.Col(html.H1("Analytics Dashboard", className='text-center mb-4', style={'fontSize': '24px', 'color': colors['primary']}), width=12)
+        dbc.Col(html.H1("Analytics Dashboard", className='text-center mb-4',
+                        style={'fontSize': '24px', 'color': colors['primary']}), width=12)
     ]),
     dbc.Row([
-        dbc.Col(html.H2(f"Total Applicants: {total_applicant_count}", className='text-center', style={'fontSize': '18px', 'color': '#000000'}), width=12)
+        dbc.Col(html.H2(f"Total Applicants: {total_applicant_count}", className='text-center',
+                        style={'fontSize': '18px', 'color': '#000000'}), width=12)
     ]),
     dbc.Row([
-                dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
-        dbc.Col(dcc.Graph(figure=education_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
+        dbc.Col(dcc.Graph(figure=work_ex_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6,
+                style={'padding': '30px'}),
+        dbc.Col(dcc.Graph(figure=education_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6,
+                style={'padding': '30px'})
     ]),
     dbc.Row([
-        dbc.Col(dcc.Graph(figure=skills_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'}),
-        dbc.Col(dcc.Graph(figure=time_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6, style={'padding': '30px'})
+        dbc.Col(dcc.Graph(figure=skills_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6,
+                style={'padding': '30px'}),
+        dbc.Col(dcc.Graph(figure=time_fig, config={'responsive': True}), xs=12, sm=12, md=6, lg=6, xl=6,
+                style={'padding': '30px'})
     ])
 ], fluid=True)
 
-#===========================================END DASH================================================
-#===================================================================================================
+
+# ===========================================END DASH================================================
+# ===================================================================================================
 
 def read_document(file_path):
     if file_path.endswith('.pdf'):
         try:
             pdf_document = fitz.open(file_path)
-            txt = ""
+            text = ""
             for page_num in range(pdf_document.page_count):
                 page = pdf_document.load_page(page_num)
-                txt += page.get_text() + "\n"
+                text += page.get_text() + "\n"
             pdf_document.close()
-            return txt
+            return text
         except Exception as e:
             print(f"Error reading PDF: {e}")
             return None
-    elif file_path.endswith('.docx') or file_path.endswith('.doc'):
+    elif file_path.endswith(('.docx', '.doc')):
         try:
             document = Document(file_path)
-            txt = "\n".join([para.text for para in document.paragraphs])
-            return txt
+            text = "\n".join([para.text for para in document.paragraphs])
+            return text
         except Exception as e:
             print(f"Error reading Word document: {e}")
             return None
@@ -198,14 +205,15 @@ def hod_button():
     session = db.session()
     name = request.form.get('username')
     password = request.form.get('password')
-    
-    res = session.execute(text(f"SELECT username FROM faculty WHERE username LIKE '{name}' AND password LIKE '{password}'"))
+
+    res = session.execute(
+        text(f"SELECT username FROM faculty WHERE username LIKE '{name}' AND password LIKE '{password}'"))
     try:
-        # noinspection PyStatementEffect,PyProtectedMember
         list([dict(row._mapping) for row in res][0].values())[0]
         return render_template('hod_form.html')
-    except (Exception,):
-        pass #to-do: write the code to display wrong credentials - enter again... @puru
+    except (Exception):
+        pass  # to-do: write the code to display wrong credentials - enter again... @puru
+
 
 def generate_vectors(jd_vec, dist):
     def random_unit_vector():
@@ -213,10 +221,10 @@ def generate_vectors(jd_vec, dist):
         y = random.uniform(-1, 1)
         z = random.uniform(-1, 1)
         length = math.sqrt(x * x + y * y + z * z)
-        
+
         if length == 0:
             return random_unit_vector()  # Prevent division by zero
-        
+
         return [x / length, y / length, z / length]
 
     unit_vec = random_unit_vector()
@@ -225,8 +233,9 @@ def generate_vectors(jd_vec, dist):
         jd_vec[1] + unit_vec[1] * dist,
         jd_vec[2] + unit_vec[2] * dist,
     ]
-    
+
     return new_vec
+
 
 @app.route('/filter_candidates')
 def filter_candidates():
@@ -235,14 +244,17 @@ def filter_candidates():
     resume_vecs = request.args.get('resume_vecs')
     return render_template('filter.html', data=[json.loads(parsed_res), parsed_res, resume_vecs])
 
+
 @app.route('/no_match', methods=['GET'])
 def no_match():
     return render_template('no_match.html')
 
+
 @app.route('/regular_submit', methods=['POST'])
 def regular_submit():
     session = db.session()
-    res = session.execute(text("SELECT p.name, p.email, p.phone_number, p.link, s.score FROM personal_information p JOIN score s WHERE p.id = s.personal_information_id ORDER BY s.score DESC;")).cursor
+    res = session.execute(text(
+        "SELECT p.name, p.email, p.phone_number, p.link, s.score FROM personal_information p JOIN score s WHERE p.id = s.personal_information_id ORDER BY s.score DESC;")).cursor
     session.close()
 
     # Creating vectors for all the resumes
@@ -256,10 +268,11 @@ def regular_submit():
 
     parsed_res = json.dumps(list(res))
     return jsonify({
-        'redirect': url_for('filter_candidates', 
-                        parsed_res=parsed_res, 
-                        resume_vecs=json.dumps(resume_vecs))
+        'redirect': url_for('filter_candidates',
+                            parsed_res=parsed_res,
+                            resume_vecs=json.dumps(resume_vecs))
     })
+
 
 @app.route('/exact_match', methods=['POST'])
 def exact_match():
@@ -268,15 +281,15 @@ def exact_match():
     # Getting the generated summary
     session = db.session()
     gen_sum = session.execute(text("SELECT id, gen_sum FROM personal_information; ")).cursor
-    
+
     # Checking for exact match
     matching_id = set()
     for req in list(gen_sum):
-        for words in info['txtbox'].split():
+        for words in info['txtbox'].split(','):
             for match in req[1].split():
                 if re.search(r'\b' + words + r'\b', match):
                     matching_id.add(req[0])
-                
+
     # Calling an empty page if there are no matching ids
     if not matching_id:
         return jsonify({'redirect': url_for('no_match')})
@@ -303,163 +316,152 @@ def exact_match():
 
     parsed_res = json.dumps(list(res))
     return jsonify({
-        'redirect': url_for('filter_candidates', 
-                        parsed_res=parsed_res, 
-                        resume_vecs=json.dumps(resume_vecs))
+        'redirect': url_for('filter_candidates',
+                            parsed_res=parsed_res,
+                            resume_vecs=json.dumps(resume_vecs))
     })
 
 
-@app.route('/login',  methods=['POST', 'GET'])
+@app.route('/login', methods=['POST', 'GET'])
 def login():
     return render_template('login.html')
 
+
+# Pydantic Object Format
+class PersonalInformation(BaseModel):
+    Name: str = Field(description="Name of the person")
+    Email: str = Field(description="Email address of the person")
+    Phone_Number: str = Field(description="Phone number of the person")
+    Address: str = Field(description="Address of the person")
+    LinkedIn_URL: str = Field(description="LinkedIn profile URL of the person")
+
+
+class WorkExperience(BaseModel):
+    Company_Name: str = Field(description="Name of the company")
+    Mode_of_Work: str = Field(description="Mode of work (e.g., remote, on-site)")
+    Job_Role: str = Field(description="Job role/title")
+    Job_Type: str = Field(description="Type of job (e.g., full-time, part-time)")
+    Start_Date: str = Field(description="Start date of the job")
+    End_Date: str = Field(description="End date of the job")
+
+
+class Project(BaseModel):
+    Name_of_Project: str = Field(description="Name of the project")
+    Description: str = Field(description="Description of the project")
+    Start_Date: str = Field(description="Start date of the project")
+    End_Date: str = Field(description="End date of the project")
+
+
+class Achievement(BaseModel):
+    Heading: str = Field(description="Heading of the achievement")
+    Description: str = Field(description="Description of the achievement")
+    Start_Date: str = Field(description="Start date of the achievement")
+    End_Date: str = Field(description="End date of the achievement")
+
+
+# Needs work
+class EducationDetails(BaseModel):
+    Degree_Name: str = Field(
+        description="Name of the degree persued by the candidate (Like BSc, B.Tech, MSc BCA, Phd, etc.)")
+    Field_of_Study: str = Field(description="Field of study")
+    University: str = Field(description="Name of the University or Institute")
+    Marks_Percentage_GPA: str = Field(description="Marks/Percentage/GPA")
+    Start_Date: str = Field(description="Start date of the education")
+    End_Date: str = Field(description="End date of the education")
+
+
+class Certification(BaseModel):
+    Certification_Title: str = Field(description="Title of the certification")
+    Issuing_Organization: str = Field(description="Name of the issuing organization")
+    Date_Of_Issue: str = Field(description="Date of issue of the certification")
+
+
+class LanguageCompetency(BaseModel):
+    Language: str = Field(description="Language")
+    Proficiency: str = Field(description="Proficiency level")
+
+
+class ResumeJSON(BaseModel):
+    Personal_Information: PersonalInformation = Field(description="Personal information of the person")
+    Summary: str = Field(description="Summary or objective of the person")
+    Work_Experience: List[WorkExperience] = Field(description="Work experience details")
+    Projects: List[Project] = Field(description="Project details")
+    Achievements: List[Achievement] = Field(description="Achievement details")
+    Education: List[EducationDetails] = Field(description="Educational background")
+    Certifications: List[Certification] = Field(description="Certification details")
+    Skills: List[str] = Field(description="Skills of the person")
+    Extracurricular_Activities: List[str] = Field(description="Extracurricular activities of the person")
+    Language_Competencies: List[LanguageCompetency] = Field(description="Language competencies")
+
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return 'No file part'
-    file = request.files['file']
-    if file.filename == '':
-        return 'No selected file'
-    if file:
-        global resume_filepath
-        resume_filepath = "uploads/" + file.filename
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
-        document_text = read_document(file_path)
-        # gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
-        # dspy.settings.configure(lm=gem)
+    testing = True
+    if testing:
+        if 'file' not in request.files:
+            return 'No file part'
+        file = request.files['file']
+        if file.filename == '':
+            return 'No selected file'
+        if file:
+            global resume_filepath
+            resume_filepath = "uploads/" + file.filename
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(file_path)
+            document_text = read_document(file_path)
+    else:
+        document_text = read_document('C:/StrangerCodes/Resume/uploads/Shiladitya_.pdf')
 
-        class Parser(dspy.Signature):
-            """
-            You are a professional resume parsing agent.
-            So do as follows:
-            1. Extract Personal Information of the applicant with keys being:
-            a. Extract name of the applicant.
-            b. Extract email of the applicant.
-            c. Extract phone number of the applicant.
-            d. Exract address of the applicant.
-            e. Extract linkedin url of the applicant (Add https:// in front of the link if it is not already present).
-            2. Extract me the Summary of the applicant if mentioned.
-            3. Extract me Work Experience details with keys being:
-            a. Company name
-            b. Mode of work (Offline/Online/Hybrid)
-            c. Job Role
-            d. Job Type (Full Time or Intern)
-            e. Start Date
-            f. End Date.
-            4. Extract me Project details with keys being:
-            a. Name of Project with short introduction of it, if mentioned
-            b. Description of project.
-            c. Start Date if any.
-            d. End Date if any
-            5. Extract me Achievement details with keys being:
-            a. Heading with short introduction of it, if mentioned
-            b. Description of the heading.
-            c. Start Date if any.
-            d. End Date if any:
-            6. Extract me Education details with keys being:
-            a. Degree/Course
-            b. Field of Study (note: usually written alongside degree, extract from 'degree' key if that is the case)
-            c. Institute
-            d. Marks/Percentage/GPA
-            e. Start Date if any
-            f. End Date/ Passing Year
-            7. Extract me Certification details with keys being:
-            a. Certification Title
-            b. Issuing Organization
-            c. Date Of Issue
-            8. List me all the skills from the following document.
-            9. List me all the extracurricular activities/hobbies from the following document.
-            10. List me all the language competencies from the following document.
-            You are to generate a valid JSON script as output. Properly deal with trailing commas while formatting the output file.
-            Take this empty json format and fill it up:
-            {
-                "Personal_Information": {{
-                    "Name": "",
-                    "Email": "",
-                    "Phone_Number": "",
-                    "Address": "",
-                    "LinkedIn_URL": ""
-                }},
-                "Summary": "",
-                "Work_Experience": [
-                    {{
-                        "Company_Name": "",
-                        "Mode_of_Work": "",
-                        "Job_Role": "",
-                        "Job_Type": "",
-                        "Start_Date": "",
-                        "End_Date": "",
-                    }}
-                ],
-                "Projects": [
-                    {{
-                        "Name_of_Project": "",
-                        "Description": "",
-                        "Start_Date": "",
-                        "End_Date": ""
-                    }}
-                ],
-                "Achievements": [
-                    {{
-                        "Heading": "",
-                        "Description": "",
-                        "Start_Date": "",
-                        "End_Date": ""
-                    }}
-                ],
-                "Education": [
-                    {{
-                        "Degree/Course": "",
-                        "Field_of_Study": "",
-                        "Institute": "",
-                        "Marks/Percentage/GPA": "",
-                        "Start_Date": "",
-                        "End_Date": ""
-                    }}
-                ],
-                "Certifications": [
-                    {{
-                        "Certification_Title": "",
-                        "Issuing_Organization": "",
-                        "Date_Of_Issue": ""
-                    }}
-                ],
-                "Skills": [],
-                "Extracurricular_Activities": [],
-                "Language_Competencies": [
-                    {{
-                        "Language": "",
-                        "Proficiency": ""
-                    }}
-                ]
-            }"""
+        client = ChatGroq(
+            temperature=0,
+            model='llama3-70b-8192',
+            api_key="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"
+        )
 
-            resume = dspy.InputField(desc="This is the resume.")
-            json_resume = dspy.OutputField(desc="The JSON script of the resume.")
+        parser = JsonOutputParser(pydantic_object=ResumeJSON)
 
-        output = dspy.Predict(Parser)
-        response = output(resume=document_text).json_resume
+        prompt = PromptTemplate(
+            template="""
+                                You are a professional resume parsing agent.
+                                You can leave a key empty if you are not sure about the value.
+                                {format_instructions}
+                                {resume}
+                            """,
+            input_variables=["resume"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
 
-        txt = response.replace('"Personal_Information": [],',
-                                '"Personal_Information": [{"Name": null,"Email": null,"Phone_Number": null,"Address": null,"LinkedIn_URL": null}],')
-        txt = txt.replace('"Work_Experience": [],',
-                            '"Work_Experience": [{"Company_Name": null,"Mode_of_Work": null,"Job_Role": null,"Start_Date": null,"End_Date": null}],')
-        txt = txt.replace('"Projects": [],',
-                            '"Projects": [{"Name_of_Project": null,"Description": null,"Start_Date": null,"End_Date": null}],')
-        txt = txt.replace('"Achievements": [],',
-                            '"Achievements": [{"Heading": null,"Description": null,"Start_Date": null,"End_Date": null}],')
-        txt = txt.replace('"Education": [],',
-                            '"Education": [{"Degree/Course": null,"Field_of_Study": null,"Institute": null,"Marks/Percentage/GPA": null,"Start_Date": null,"End_Date": null}],')
-        txt = txt.replace('"Certifications": [],',
-                            '"Certifications": [{"Certification_Title": null,"Issuing_Organization": null,"Date_Of_Issue": null}],')
-        txt = txt.replace('"Language_Competencies": []',
-                            '"Language_Competencies": [{"Language": null,"Proficiency": null}]')
+        chain = prompt | client | parser
+        text = chain.invoke({"resume": document_text})
 
-        response_json = json.loads(txt, strict=False)
+        if text['Personal_Information'] == []:
+            text['Personal_Information'] = [
+                {"Name": '', "Email": '', "Phone_Number": '', "Address": '', "LinkedIn_URL": ''}]
+
+        if text['Work_Experience'] == []:
+            text['Work_Experience'] = [
+                {"Company_Name": '', "Mode_of_Work": '', "Job_Role": '', "Start_Date": '', "End_Date": ''}]
+
+        if text['Projects'] == []:
+            text['Projects'] = [{"Name_of_Project": '', "Description": '', "Start_Date": '', "End_Date": ''}]
+
+        if text['Achievements'] == []:
+            text['Achievements'] = [{"Heading": '', "Description": '', "Start_Date": '', "End_Date": ''}]
+
+        if text['Education'] == []:
+            text['Education'] = [
+                {"Degree_Name": '', "Field_of_Study": '', "Institute": '', "Marks/Percentage/GPA": '', "Start_Date": '',
+                 "End_Date": ''}]
+
+        if text['Certifications'] == []:
+            text['Certifications'] = [{"Certification_Title": '', "Issuing_Organization": '', "Date_Of_Issue": ''}]
+
+        if text['Language_Competencies'] == []:
+            text['Language_Competencies'] = [{"Language": '', "Proficiency": ''}]
+        # print(text['Education'])
         output_filename = app.config['GENERATED_JSON']
         with open(output_filename, 'w') as json_file:
-            json.dump(response_json, json_file, indent=4)
+            json.dump(text, json_file, indent=4)
         return redirect(url_for('resume_form'))
 
 
@@ -470,13 +472,12 @@ def resume_form():
     return render_template('resume_form.html', data=resume_data)
 
 
-# noinspection PyProtectedMember
 @app.route('/analytics', methods=['POST', 'GET'])
 def view_analytics():
     session = db.session()
     res = session.execute(text(f'''SELECT COUNT(id) FROM personal_information'''))
     res = list([dict(row._mapping) for row in res][0].values())[0]
-    df = pd.DataFrame({'applicant_count':res}, [0])
+    df = pd.DataFrame({'applicant_count': res}, [0])
     df.to_excel('Applicant_Count.xlsx', index=False)
 
     bac = session.execute(text(
@@ -508,13 +509,15 @@ def view_analytics():
     df = df.groupby('experience_years').size().reset_index(name='count')
     df.to_excel('Work.xlsx', index=False)
 
-    res = session.execute(text('''SELECT skill, COUNT(*) AS frequency FROM skills GROUP BY  skill ORDER BY frequency DESC'''))
+    res = session.execute(
+        text('''SELECT skill, COUNT(*) AS frequency FROM skills GROUP BY  skill ORDER BY frequency DESC'''))
     res = [dict(row._mapping) for row in res]
     df = pd.DataFrame(res)
     df.to_excel('Skills.xlsx', index=False)
     session.close()
 
     return flask.redirect('/plotly/')
+
 
 @app.route('/feedback')
 def feedback():
@@ -524,41 +527,23 @@ def feedback():
 # shila takes over ...
 # <======================================================================================================================>
 
-gem = dspy.Google("models/gemini-1.0-pro", api_key=os.environ["GOOGLE_API_KEY"])
-dspy.settings.configure(lm=gem)
-
-
-# class Summary(dspy.Signature):
-#     """
-#     You are an expert in summarizing text resumes of candidates applying for a
-#     job position. The resume is given in the format of json and your task is to
-#     write the summary of this candidate from this resume. Be careful to include all
-#     relevant skills mentioned in the resume.
-#     """
-#     resume_json = dspy.InputField(desc='This is the resume in JSON format.')
-#     summary = dspy.OutputField(desc='The summary of the resume.')
-
 def summ(rj):
-    chat = ChatGroq(
-        temperature=0,
-        model="llama3-70b-8192",
-        api_key="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"
-    )
-    system = '''You are an expert to fetch all the keywords from a given resume.
+    prompt = f'''You are an expert to fetch all the keywords from a given resume.
                 You will be given a resume in json format.
                 Read the entire resume and figure out all the keywords.
                 Be careful that your list MUST include ALL the keywords mentioned in the resume.
                 Start with 1.
+                {rj}
              '''
-    human = "{resume}"
-    this = {"resume":rj}
-    prompt = ChatPromptTemplate.from_messages([("system", system), ("human", human)])
-    chain = prompt | chat
-    kws = chain.invoke(this).content
-    return ' '.join([match.strip() for match in re.findall(r'\d+\.(.*)', kws)])
 
-
-# summ = dspy.Predict(Summary)
+    client = groq.Groq(api_key=os.environ["CHATGROQ_API_KEY"])
+    response = client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model="llama3-70b-8192",
+        seed=42
+    )
+    kws = response.choices[0].message.content
+    return ','.join([match.strip() for match in re.findall(r'\d+\.(.*)', kws)])
 
 
 class PersonalInformation(db.Model):
@@ -572,10 +557,12 @@ class PersonalInformation(db.Model):
     link = db.Column(db.String(255))
     time_stamp = db.Column(db.Date)
 
+
 class Faculty(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255))
     password = db.Column(db.String(100))
+
 
 class Filter(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -652,10 +639,12 @@ class LanguageCompetencies(db.Model):
     language = db.Column(db.String(255))
     proficiency_level = db.Column(db.String(255))
 
+
 class Score(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     personal_information_id = db.Column(db.Integer, db.ForeignKey('personal_information.id'))
     score = db.Column(db.Double)
+
 
 # db.drop_all()  # if any changes made to the above database classes.
 db.create_all()
@@ -669,7 +658,7 @@ def submit():
     phone = request.form['phone']
     address = request.form['address']
     linkedin = request.form['linkedin'].lower()
-    gen_sum = summ(open('resume.json', 'r').read())
+    gen_sum = summ(rj=open('resume.json', 'r').read())
 
     personal_info = PersonalInformation(name=name, email=email, phone_number=phone, address=address,
                                         linkedin_url=linkedin, gen_sum=gen_sum, link=resume_filepath,
@@ -684,7 +673,7 @@ def submit():
     try:
         cat = request.form['cat']
         eli = request.form['eli']
-    except (Exception,):
+    except:
         cat = None
         eli = None
     filt = Filter(cat=cat, eli=eli)
@@ -847,25 +836,27 @@ def submit():
         db.session.add(language_competency)
 
     # Scoring
-    resume_info = {'Summary':gen_sum,
-                   'Work Experience':scoring_we,
-                   'Projects':scoring_prj,
-                   'Achievements':scoring_ach,
-                   'Education Details':scoring_ed,
-                   'Certifications':scoring_cert,
-                   'Skills':skills,
-                   'Languages':language}
+    resume_info = {'Keywords': gen_sum,
+                   'Work_Experience': scoring_we,
+                   'Projects': scoring_prj,
+                   'Achievements': scoring_ach,
+                   'Education': scoring_ed,
+                   'Certifications': scoring_cert,
+                   'Skills': skills,
+                   'Language_Competencies': language}
 
-    jd_text = open(r"C:\StrangerCodes\Resume\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
+    jd_text = open(r"S:\resume_parsing\job_descriptions\Prof.-CS-Sitare-University.txt", encoding='utf-8').read()
 
     resume_score = Scoring(jd_text, resume_info).final_similarity()
-    db.session.add(Score(personal_information_id=personal_info.id, 
+    print(resume_score)
+    db.session.add(Score(personal_information_id=personal_info.id,
                          score=resume_score))
 
     db.session.commit()
 
     # time.sleep(5)
     return render_template('home.html')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
