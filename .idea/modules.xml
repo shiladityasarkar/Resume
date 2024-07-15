@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../ChatExcel/.idea/ChatExcel.iml" filepath="$PROJECT_DIR$/../ChatExcel/.idea/ChatExcel.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/Resume.iml" filepath="$PROJECT_DIR$/.idea/Resume.iml" />
     </modules>
   </component>

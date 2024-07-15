@@ -8,7 +8,7 @@ import flask
 from flask import Flask, jsonify, render_template, request, redirect, url_for
 import fitz
 import groq
-from docx import Document
+# from docx import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_groq import ChatGroq
@@ -168,20 +168,20 @@ def read_document(file_path):
     if file_path.endswith('.pdf'):
         try:
             pdf_document = fitz.open(file_path)
-            text = ""
+            txt = ""
             for page_num in range(pdf_document.page_count):
                 page = pdf_document.load_page(page_num)
-                text += page.get_text() + "\n"
+                txt += page.get_text() + "\n"
             pdf_document.close()
-            return text
+            return txt
         except Exception as e:
             print(f"Error reading PDF: {e}")
             return None
     elif file_path.endswith(('.docx', '.doc')):
         try:
             document = Document(file_path)
-            text = "\n".join([para.text for para in document.paragraphs])
-            return text
+            txt = "\n".join([para.text for para in document.paragraphs])
+            return txt
         except Exception as e:
             print(f"Error reading Word document: {e}")
             return None
@@ -211,7 +211,7 @@ def hod_button():
     try:
         list([dict(row._mapping) for row in res][0].values())[0]
         return render_template('hod_form.html')
-    except (Exception):
+    except Exception:
         pass  # to-do: write the code to display wrong credentials - enter again... @puru
 
 
@@ -432,33 +432,33 @@ def upload_file():
         )
 
         chain = prompt | client | parser
-        text = chain.invoke({"resume": document_text})
+        txt = chain.invoke({"resume": document_text})
 
-        if text['Personal_Information'] == []:
-            text['Personal_Information'] = [
+        if not txt['Personal_Information']:
+            txt['Personal_Information'] = [
                 {"Name": '', "Email": '', "Phone_Number": '', "Address": '', "LinkedIn_URL": ''}]
 
-        if text['Work_Experience'] == []:
-            text['Work_Experience'] = [
+        if not txt['Work_Experience']:
+            txt['Work_Experience'] = [
                 {"Company_Name": '', "Mode_of_Work": '', "Job_Role": '', "Start_Date": '', "End_Date": ''}]
 
-        if text['Projects'] == []:
-            text['Projects'] = [{"Name_of_Project": '', "Description": '', "Start_Date": '', "End_Date": ''}]
+        if not txt['Projects']:
+            txt['Projects'] = [{"Name_of_Project": '', "Description": '', "Start_Date": '', "End_Date": ''}]
 
-        if text['Achievements'] == []:
-            text['Achievements'] = [{"Heading": '', "Description": '', "Start_Date": '', "End_Date": ''}]
+        if not txt['Achievements']:
+            txt['Achievements'] = [{"Heading": '', "Description": '', "Start_Date": '', "End_Date": ''}]
 
-        if text['Education'] == []:
-            text['Education'] = [
+        if not txt['Education']:
+            txt['Education'] = [
                 {"Degree_Name": '', "Field_of_Study": '', "Institute": '', "Marks/Percentage/GPA": '', "Start_Date": '',
                  "End_Date": ''}]
 
-        if text['Certifications'] == []:
-            text['Certifications'] = [{"Certification_Title": '', "Issuing_Organization": '', "Date_Of_Issue": ''}]
+        if not txt['Certifications']:
+            txt['Certifications'] = [{"Certification_Title": '', "Issuing_Organization": '', "Date_Of_Issue": ''}]
 
-        if text['Language_Competencies'] == []:
-            text['Language_Competencies'] = [{"Language": '', "Proficiency": ''}]
-        # print(text['Education'])
+        if not txt['Language_Competencies']:
+            txt['Language_Competencies'] = [{"Language": '', "Proficiency": ''}]
+
         output_filename = app.config['GENERATED_JSON']
         with open(output_filename, 'w') as json_file:
             json.dump(text, json_file, indent=4)
